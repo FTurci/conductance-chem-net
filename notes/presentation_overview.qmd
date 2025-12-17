@@ -1,0 +1,337 @@
+---
+title: "Modular Circuits for Reaction Networks"
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    transition: slide
+    preview-links: auto
+---
+
+## Complex reaction networks {.smaller}
+:::{.columns}
+:::{.column width="40%"}
+How do we understand and design **complex chemical reaction networks**?
+
+-   Biological systems: metabolism, signalling, gene regulation
+-   Synthetic chemistry: catalytic networks, self-assembly
+-   Energy conversion: fuel cells, molecular motors
+
+
+:::
+:::{.column width="60%"}
+![Complex proteomic network of SARS-CoV-2, Stukalov et al Nature (2021)](./figs/sars.png)
+:::
+:::
+
+
+**Can we think about complex networks more like electrical circuits?**
+
+------------------------------------------------------------------------
+
+## The Circuit Analogy {.smaller}
+
+**Why Circuits Work in Electronics:**
+
+```         
+Complex device = Combination of simpler modules
+   Each resistor/capacitor: characterized once
+   Combine using algebraic rules (Ohm's law, etc.)
+   Reuse components in different contexts
+```
+
+-   Characterize chemical "modules" independently
+-   Store their properties (like component datasheets)
+-   Combine modules using simple mathematical rules
+-   Predict behavior of complex networks without full recalculation
+
+::: callout-note
+## Key Insight
+
+Chemical networks have **currents** (matter flow) and **forces** (chemical potential differences) — just like circuits have currents and voltages
+:::
+
+------------------------------------------------------------------------
+
+## Why Chemical Networks? {.smaller}
+
+:::{.columns}
+:::{.column width="60%"}
+**Electronic circuits:** 1 conservation law (charge)
+
+- Single quantity flowing through network
+- Scalar conductance: $I = G \cdot V$
+
+**Chemical networks:** N conservation laws (each species)
+
+- N independent conserved currents flowing simultaneously
+- Matrix conductance: $\mathbf{I} = \mathbf{G} \cdot \boldsymbol{\mu}$
+- Off-diagonal $G_{ij}$: species $i$ drives species $j$ → **cross-coupling**
+:::
+
+:::{.column width="40%"}
+
+![Example enzymatic network with submodules, Avanzini et al PRX (2023)](./figs/avanzini.png)
+:::
+:::
+
+------------------------------------------------------------------------
+
+## Computational implications {.smaller}
+
+::: {style="font-size: 0.7em;"}
+
+**[N Conservation Laws]{style="background-color: #e1f5fe; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #01579b;"}**  
+Multiple species flowing simultaneously
+
+↓
+
+**[N Parallel Information Channels]{style="background-color: #e8f5e8; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #1b5e20;"} + [Cross-Coupling via $G_{ij}$]{style="background-color: #e8f5e8; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #1b5e20;"}**  
+Independent conserved currents + Species $i$ drives species $j$
+
+↓
+
+**[Massively Parallel Processing]{style="background-color: #f3e5f5; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #4a148c;"}**  
+Concurrent computation pathways
+
+↓
+
+**[Thermodynamically Consistent Computation]{style="background-color: #fff3e0; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #e65100;"}**  
+Respects energy conservation and entropy production laws
+
+↓
+
+**[Energy-Efficient Computing]{style="background-color: #fce4ec; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #880e4f;"} + [Self-Assembling Architecture]{style="background-color: #fce4ec; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #880e4f;"}**  
+Approaches $k_B T$ limit + Molecular scale organization
+
+↓
+
+**[Applications]{style="background-color: #f1f8e9; padding: 5px 10px; border-radius: 5px; border-left: 4px solid #33691e;"}**  
+DNA computing, biochemical oscillators, molecular pattern recognition
+
+:::
+
+------------------------------------------------------------------------
+
+## Thermodynamic circuit Theory {.smaller}
+
+
+In a series of papers (Verley et al PRE, 2024 and  2025 )proposed a systematic coarse-graining
+
+Each chemical module characterized by a **conductance matrix** $\mathbf{G}$:
+
+$$\text{Chemical currents} = \mathbf{G} \times \text{Chemical forces}$$
+
+1.  **Modularity:** Calculate each module separately
+2.  **Composability:** Combine using **algebraic rules** leveraging **conservation laws**
+3.  **Thermodynamically consistent:** Respects energy conservation, entropy production
+
+| **Level** | **Variables** | **Currents** | **Forces** |
+|-----------|---------------|--------------|------------|
+| **Reaction** | Reaction rates $r_\alpha$ | $j_\alpha = r_\alpha$ | Affinities $A_\alpha$ |
+| **Cycle** | Cycle currents $J_k$ | $J_k$ (conserved) | Cycle forces $F_k$ |
+| **Physical** | Species concentrations $x_i$ | Net production $\dot{x}_i$ | Chemical potentials $\mu_i$ |
+
+## Thermodynamic Consistency {.smaller}
+
+At every level of description, the system obeys thermodynamic laws:
+
+$$\text{Entropy production rate} = \sum_i j_i f_i \geq 0$$
+
+where $j_i$ = currents, $f_i$ = thermodynamic forces (affinities)
+
+
+-   Guarantees **physical realisability**
+
+    ::: {.callout-important appearance="minimal"}
+    Unlike many coarse-graining methods, thermodynamic consistency is preserved at **all scales** — from individual reactions to full network
+    :::
+
+
+## Conservation Laws via Cycle Decomposition {.smaller}
+
+**Key Insight:** Reaction currents $\mathbf{j}$ decompose into independent cycle currents $\mathbf{J}$:
+
+$$\mathbf{j} = \mathbf{C} \cdot \mathbf{J}$$
+
+where $\mathbf{C}$ is the **cycle matrix** (columns = basis cycles spanning $\ker(\nabla_x)$)
+
+- **Conservation laws** determine which reaction combinations are independent
+- Each cycle = a closed loop in reaction network (Schnakenberg decomposition)
+- Cycle currents $J_k$ are the **conserved quantities** flowing through the network
+- Species conservation automatically satisfied: $\frac{d\mathbf{x}}{dt} = S \cdot \mathbf{j} = S \cdot C \cdot \mathbf{J} = 0$ (on stoichiometric subspace)
+
+::: {.callout-note}
+## Why This Matters
+Conservation laws → Cycle structure → Conductance defined on **physically meaningful** currents (not arbitrary reaction rates)
+:::
+
+
+<!-- ## Questions {.smaller}
+
+**1. Modularity & Complexity**
+
+-   Can we build "libraries" of chemical modules?
+-   How far can modularity scale? (3 modules? 10? 100?)
+-   What about parallel connections, feedback loops, branching?
+
+**2. Coarse-Graining & Emergence**
+
+-   Does this give a **systematic** way to simplify complex chemistry?
+-   Can we hide "fast" internal reactions, keep only "slow" external behavior?
+-   Bridge scales: molecular reactions → cellular processes → tissue dynamics?
+
+**3. Design & Optimization**
+
+-   Given a desired function, can we design the optimal network?
+-   How does network topology affect efficiency?
+-   Trade-offs between robustness and performance?
+
+------------------------------------------------------------------------ -->
+
+## Knowns and unknowns {.smaller}
+
+**Knowns:**
+
+-   Theory works for **pseudolinear** networks (linear response regime)
+-   Projection matrices handling interface matching
+-   **Thermodynamic consistency** across all scales: same entropy proudction at reaction, cycle, physical levels
+-   Conservation laws emerge automatically
+
+**Unknowns:**
+
+- Nonlinear Regimes?
+- Optimal modularisation?
+- Fluctuations and stochasticity?
+
+::: callout-note
+## Consistency
+When modules connect: entropy production of combined system = sum of entropy productions in modules + interface dissipation
+:::
+
+
+## An Example {.smaller}
+
+
+:::{.columns}
+:::{.column width="70%"}
+
+**Enzyme Cascade:**
+```         
+Module 1: S → [enzyme reactions] → Na
+Module 2: Na + F → [enzyme reactions] → Nb + W
+```
+
+**Traditional Approach:**
+
+-   11 coupled reactions, 9 chemical species
+-   Solve full system of differential equations
+-   Change one reaction rate → start over
+
+**Modular Approach:**
+
+1.  Module 1: Calculate $\mathbf{G}^{(1)}$ once (3 internal, 2 external species)
+2.  Module 2: Calculate $\mathbf{G}^{(2)}$ once (4 internal, 4 external species)
+3.  Connect: $\mathbf{G}^{(3)^{-1}} = \Pi^{(1)T} \mathbf{G}^{(1)^{-1}} \Pi^{(1)} + \Pi^{(2)T} \mathbf{G}^{(2)^{-1}} \Pi^{(2)}$
+
+:::
+
+:::{.column width="30%"}
+![](./figs/twomods.png)
+:::
+:::
+
+**Result:** Same answer, but modules are reusable (thanks to linear response)
+
+
+------------------------------------------------------------------------
+
+## Computational approach {.smaller}
+
+
+- Modularisation in communicating  **objects**
+
+```python
+class Module:
+    """Dummy module"""
+    def __init__(self, reactions, internal_species, external_species):
+        self.G = self.calculate_conductance_matrix()
+        self.interfaces = external_species
+    
+    def connect(self, other_module, shared_species):
+        return Module(self, other_module, shared_species)
+
+    def consistency(self):
+        ...
+```
+
+
+1. Automate **module composition**
+1. Construct library fo known mdules: building blocks for larger graphs 
+1. Given a network, search for **optimal decomposition rules** (e.g. minimise non-linearities)
+1. Exploration of **limit conditions** (e.g. emergence of non-linearity, bistabilities, oscillations)
+
+<!-- ## Why This Matters {.smaller}
+
+**For Understanding:**
+
+-   **Intuition:** Think in terms of "resistance" and "conductance"
+-   **Causality:** See which connections matter most (coupling coefficients)
+-   **Universality:** Same math as thermoelectrics, transport phenomena
+
+**For Design:**
+
+-   **Modular engineering:** Mix-and-match chemical building blocks
+-   **Rapid prototyping:** Test module combinations computationally
+-   **Optimization:** Tune individual modules without redesigning whole system
+
+**For Biology:**
+
+-   **Systems biology:** Understand metabolic organization
+-   **Evolution:** Did evolution discover circuit principles?
+-   **Synthetic biology:** Engineer biological circuits rationally -->
+<!-- 
+
+## The Larger Vision {.smaller}
+
+**From Components to Systems:**
+
+```         
+Molecular scale        Cellular scale         Tissue scale
+    ↓                      ↓                      ↓
+Reactions    →→→   Chemical modules  →→→  Cell types  →→→  Organs
+   (fast)           (intermediate)          (slow)
+```
+
+**Hierarchical Coarse-Graining:**
+
+-   Each level: effective conductance matrix
+-   Lower-level complexity "compiled" into upper-level parameters
+-   Multiple scales handled systematically -->
+
+
+
+
+
+<!-- ## Discussion & Questions {.smaller}
+
+**Key Takeaways:**
+
+✓ Chemical networks can be understood as circuits
+
+✓ Modules characterized by conductance matrices
+
+✓ Algebraic composition laws enable modular design
+
+✓ Early results validate the approach for serial connections
+
+**What Would You Want to See Next?**
+
+-   Specific applications to your field?
+-   Connections to other approaches?
+-   Experimental feasibility?
+-   Computational implementation?
+
+::: fragment
+**Let's discuss!**
+::: -->

@@ -1,0 +1,276 @@
+---
+title: "Modularisation of Thermodynamic Circuits for Chemical Reaction Networks"
+subtitle: "Modeling with Nonequilibrium Conductance Matrices"
+author: "In collaboration with Gatien Verley"
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    transition: slide
+    preview-links: auto
+---
+
+## Overview {.smaller}
+
+**Key Innovation:** Extending thermodynamic circuit theory to chemical reaction networks (CRNs)
+
+- Chemical modules described by **nonequilibrium conductance matrices**
+- Enables modular circuit decomposition
+- Connects chemical transduction to energy conversion physics
+
+:::{.callout-note}
+## Main Result
+Two serial chemical modules can be analyzed separately and combined using conductance addition laws
+:::
+
+---
+
+## The Problem with Complex CRNs {.smaller}
+
+**Traditional Approach:**
+
+- Restart analysis from scratch for any network modification
+- Difficult to study large, interconnected systems
+- Coupling between reaction currents not emphasized
+
+**Circuit Decomposition Advantage:**
+
+- Study each chemical module separately
+- Reuse characterized modules in different CRNs
+- Natural framework for modular design
+
+---
+
+## Chemical Modules & Thermostats {.smaller}
+
+**Key Components:**
+
+- **Chemostats:** External reservoirs maintaining fixed chemical potentials
+- **Internal species:** Confined within the module
+- **Chemostat currents ($j_i$):** Matter flow between chemostats and module
+- **Thermodynamic forces ($f_i$):** Drive currents (chemical potential differences)
+
+**Linear Response Regime:**
+$$\mathbf{j} = \mathbf{C} \cdot \mathbf{f}$$
+
+where $\mathbf{C}$ is the nonequilibrium conductance matrix
+
+---
+
+## Nonequilibrium Conductance Matrix {.smaller}
+
+**Three Levels of Description:**
+
+1. **Reaction level:** Individual reaction resistances $r_\rho = \frac{RT}{k_\rho^+ [X^{s_\rho^+}]_{ss}}$
+
+2. **Cycle level:** Cycle conductance matrix $\mathbf{R}^{-1}$
+   - Based on Schnakenberg's cycle decomposition
+   
+3. **Physical level:** Fundamental conductance matrix $\mathbf{C}$
+   - Relates chemostat currents to forces
+   - Key for circuit analysis
+
+**Hierarchy:** Physical currents → Cycle currents → Reaction currents
+
+---
+
+## Schnakenberg's Cycle Decomposition {.smaller}
+
+**Core Idea:** Not all reaction currents are independent
+
+**Mathematical Framework:**
+$$\mathbf{j} = \mathbf{C} \cdot \mathbf{J}$$
+
+where:
+
+- $\mathbf{j}$ = all reaction currents (redundant)
+- $\mathbf{J}$ = **cycle currents** (independent)
+- $\mathbf{C}$ = cycle matrix (basis of kernel of $\nabla_x$)
+
+**Physical Meaning:**
+
+- Each cycle = closed loop of reactions
+- Cycle current = net flow around that loop
+- Constraint: $\nabla_x \mathbf{j} = 0$ (internal species conserved)
+
+:::{.fragment}
+**This work extends it:** From cycles of reactions → cycles of chemostat currents
+:::
+
+---
+
+## Conservation Laws {.smaller}
+
+**Fundamental Insight:**
+
+- Not all chemostat currents are independent
+- Conservation laws constrain the system
+- Dimension of fundamental forces: $\mathcal{N} - \text{rank}(\mathbf{E})$
+
+**Key Relationship:**
+$$\mathbf{E} \cdot \mathbf{j} = 0$$
+
+where $\mathbf{E}$ is the stoichiometric conservation matrix
+
+:::{.callout-tip}
+Fundamental currents provide effective description without emergent cycles
+:::
+
+---
+
+## Serial Association of Modules {.smaller}
+
+**Two Chemical Modules in Series:**
+
+- Module 1: $\mathbf{j}_1 = \mathbf{C}_1 \cdot \mathbf{f}_1$
+- Module 2: $\mathbf{j}_2 = \mathbf{C}_2 \cdot \mathbf{f}_2$
+
+**Serial Connection:**
+
+- Current conservation at interface
+- Force addition: $\mathbf{f}_{\text{tot}} = \mathbf{f}_1 + \mathbf{f}_2$
+
+**Combined Conductance:**
+$$\mathbf{C}_{\text{serial}}^{-1} = \mathbf{C}_1^{-1} + \mathbf{C}_2^{-1}$$
+
+(Resistance addition law!)
+
+---
+
+## Validation: Two Approaches {.smaller}
+
+**Approach 1:** Modular calculation
+
+1. Calculate conductance matrix for each module separately
+2. Combine using serial resistance addition
+3. Result: $\mathbf{C}_{\text{serial}}$
+
+**Approach 2:** Direct calculation
+
+1. Write full CRN equations for connected system
+2. Calculate conductance matrix directly
+3. Result: $\mathbf{C}_{\text{direct}}$
+
+**Key Finding:** $\mathbf{C}_{\text{serial}} = \mathbf{C}_{\text{direct}}$ ✓
+
+Confirms validity of circuit decomposition approach
+
+---
+
+## Coupling & Efficiency {.smaller}
+
+**Coupling Between Currents:**
+
+- Off-diagonal terms in conductance matrix
+- Crucial for chemical transduction efficiency
+- Analogous to thermoelectric effects
+
+**Efficiency Constraints:**
+
+- Tight coupling increases efficiency
+- Conductance matrix structure determines maximum efficiency
+- Universal framework for conversion processes
+
+**Applications:**
+
+- Molecular motors, ATP synthesis, chemical pumps
+- Design principles for synthetic chemical systems
+
+---
+
+## Systematic Coarse-Graining {.smaller}
+
+**Internal vs External Species:**
+
+- **External species:** Chemostated (fixed chemical potential)
+- **Internal species:** Hidden within the module
+- Conductance matrix describes **effective dynamics** at external level
+
+**Coarse-Graining Procedure:**
+
+1. Identify internal species (fast/hidden variables)
+2. Calculate full reaction network dynamics
+3. Project onto external chemostat currents
+4. Result: Effective conductance matrix $\mathbf{C}$
+
+:::{.callout-tip}
+## Key Insight
+The conductance matrix systematically encodes how internal complexity affects external behavior—**no ad-hoc assumptions needed**
+:::
+
+---
+
+## Computational Modularity {.smaller}
+
+**Algebraic Law for Serial Connection:**
+
+$$\mathbf{G}^{(3)^{-1}} = \sum_{m=1}^{2} \Pi^{(m,3)T} \mathbf{G}^{(m)^{-1}} \Pi^{(m,3)}$$
+
+where:
+
+- $\mathbf{G}^{(m)}$ = conductance matrix of module $m$
+- $\Pi^{(m,3)}$ = projection matrix (maps module $m$ interface to combined system)
+- **Resistance addition** with proper projections onto interface
+
+**Computational Advantage:**
+
+- Calculate each module **once** → store $\mathbf{G}^{(m)}$
+- Combine via matrix operations (no recalculation!)
+- Build complex networks from library of characterized modules
+- $\Pi$ matrices handle interface matching automatically
+
+:::{.callout-important}
+## Modular Computing
+Each module = independent object. Connection = algebraic operation.
+:::
+
+---
+
+## Self-Consistency at Interfaces {.smaller}
+
+**Interface Conditions (Serial Connection):**
+
+1. **Current conservation:** $\mathbf{j}_1 = \mathbf{j}_2$ at shared chemostat
+2. **Force addition:** $\mathbf{f}_{\text{total}} = \mathbf{f}_1 + \mathbf{f}_2$
+3. **Kirchhoff-like law:** Total force drives conserved current
+
+**Physical Interpretation:**
+
+- Shared chemostat = interface node
+- Current continuity ⟺ no accumulation at interface
+- Chemical potential drops add across modules
+
+**Verification:**
+
+```
+Direct calculation = Modular calculation
+       ✓                    ✓
+    C_direct        C₁⁻¹ + C₂⁻¹
+```
+
+Self-consistency automatically satisfied by thermodynamic circuit theory!
+
+---
+
+## Conclusions & Outlook {.smaller}
+
+**Main Contributions:**
+
+✓ Nonequilibrium conductance matrix for CRNs
+
+✓ Circuit decomposition with modular analysis
+
+✓ Conservation laws at chemostat current level
+
+✓ Validated serial association laws
+
+**Future Directions:**
+
+- Parallel and mixed circuit topologies
+- Nonlinear regime extensions
+- Applications to biological networks
+- Optimal design of chemical transduction systems
+
+:::{.fragment}
+**Impact:** Simplifies analysis of complex CRNs through reusable chemical modules
+:::
