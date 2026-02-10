@@ -1,4 +1,5 @@
 # all imports
+
 import hypernetx as hnx
 import numpy as np
 import pandas as pd
@@ -10,8 +11,6 @@ warnings.simplefilter('ignore')
 import re
 from sympy import *
 import sympy
-
-warnings.simplefilter('ignore')
 init_printing()
 
 class ModuleProperties:
@@ -26,6 +25,7 @@ class ModuleProperties:
         self.species_names = species_names
         self.internal_stoich_matrix = self.stoich_matrix[0:self.num_internal_species, :]
         self.external_stoich_matrix = self.stoich_matrix[self.num_internal_species: len(self.stoich_matrix), :]
+        self.hypergraph_labels = dict(enumerate(species_names)) # for the hypergraphs
 
 
         # LABELLING FOR SPECIES, FORCES, EDGE CURRENTS, CHEMICAL POTENTIALS
@@ -323,6 +323,38 @@ class ModuleProperties:
         self.fundamental_resistance_matrix = fundamental_resistance_matrix # assign to self for use in other methods
 
         return fundamental_resistance_matrix
+    
+    #==========================================================================================================================================
+    # HYPERGRAPHS
+    #
+    # Define a new function to find the hypergraphs for the internal species
+    #
+
+    def draw_internal_hypergraph(self):
+
+        """ This method generates and displays the hypergraph for the internal species of the module using the node
+        labels defined in self.
+        """
+        internal_stoich_matrix = np.array(self.internal_stoich_matrix, dtype=float)
+
+        internals_HG = hnx.Hypergraph.from_incidence_matrix(internal_stoich_matrix) # create hypergraph, using the internal SM defined in self
+
+        hnx.draw(internals_HG, node_labels=self.hypergraph_labels, with_edge_labels=True) # print this using the labels defined in self
+
+    #
+    # Define a new function to find the hypergraphs for the full stoichiometric matrix
+    #
+
+    def draw_full_hypergraph(self):
+        
+        """ This method generates and displays the hypergraph for the full stoichiometric matrix of the module using the node
+        labels defined in self.
+        """
+        stoich_matrix = np.array(self.stoich_matrix, dtype=float)
+
+        full_HG = hnx.Hypergraph.from_incidence_matrix(stoich_matrix) # create hypergraph, using the full SM defined in self
+
+        hnx.draw(full_HG, node_labels=self.hypergraph_labels, with_edge_labels=True) # print this using the labels defined in self
 
     
 class CombiningModules:
@@ -332,6 +364,20 @@ class CombiningModules:
         #=====================================================================================================================================
         # IDENTIFY MATCHING EXTERNAL SPECIES
 
+        self.left_mod = left_mod
+        self.right_mod = right_mod
+
+        self.left_mod_physical_currents = left_mod.calculate_physical_currents() # calculate physical currents for left module
+        self.right_mod_physical_currents = right_mod.calculate_physical_currents() # calculate physical currents for right module
+        self.left_mod_selection_matrix = left_mod.calculate_selection_matrix() # calculate selection matrix for left module
+        self.right_mod_selection_matrix = right_mod.calculate_selection_matrix() # calculate selection matrix for right module
+        self.left_mod_conservation_laws_chemostat = left_mod.calculate_conservation_laws()[1] # calculate chemostat conservation laws for left module
+        self.right_mod_conservation_laws_chemostat = right_mod.calculate_conservation_laws()[1] # calculate chemostat conservation laws for right module
+        self.left_mod_fundamental_resistance_matrix = left_mod.calculate_fundamental_resistance_matrix() # calculate fundamental resistance matrix for left module
+        self.right_mod_fundamental_resistance_matrix = right_mod.calculate_fundamental_resistance_matrix() # calculate fundamental resistance matrix for right module
+
+    
+    
         left_ext_indices  = list(range(left_mod.num_internal_species, left_mod.num_species)) # external species indices for left module
         right_ext_indices = list(range(right_mod.num_internal_species, right_mod.num_species)) # external species indices for right module
 
@@ -360,19 +406,18 @@ class CombiningModules:
         left_curr  = left_mod.calculate_physical_currents() # physical currents for left module
         right_curr = right_mod.calculate_physical_currents() # physical currents for right module
 
-        left_right_current  = sympy.Matrix([left_curr[r]  for r in left_match_rows]) # left module matching external currents
-        right_left_current  = sympy.Matrix([right_curr[r] for r in right_match_rows]) # right module matching external currents
+        self.left_right_current  = sympy.Matrix([left_curr[r]  for r in left_match_rows]) # left module matching external currents
+        self.right_left_current  = sympy.Matrix([right_curr[r] for r in right_match_rows]) # right module matching external currents
 
-        left_left_current = sympy.Matrix([left_curr[r] for r in range(left_mod.num_external_species)
+        self.left_left_current = sympy.Matrix([left_curr[r] for r in range(left_mod.num_external_species)
             if r not in left_match_rows]) # creates a matrix of left unmatched external currents
 
-        right_right_current = sympy.Matrix([right_curr[r] for r in range(right_mod.num_external_species)
+        self.right_right_current = sympy.Matrix([right_curr[r] for r in range(right_mod.num_external_species)
             if r not in right_match_rows]) # creates a matrix of right unmatched external currents
 
-        constraint_eqs = [left_right_current[k] + right_left_current[k]
-            for k in range(len(left_right_current)) ] # build list of constraint equations for matching currents
-
-        symbols_to_solve = left_right_current.free_symbols # get symbols to solve for from left matching currents
+        constraint_eqs = [self.left_right_current[k] + self.right_left_current[k]
+            for k in range(len(self.left_right_current)) ] # build list of constraint equations for matching currents
+        symbols_to_solve = self.left_right_current.free_symbols # get symbols to solve for from left matching currents
         solutions = sympy.solve(constraint_eqs, symbols_to_solve) # solve constraints for matching currents
 
         left_curr  = left_curr.subs(solutions) # substitute solutions into left physical currents
@@ -384,7 +429,7 @@ class CombiningModules:
         right_right_current = sympy.Matrix([right_curr[r] for r in range(right_mod.num_external_species)
             if r not in right_match_rows]) # creates a matrix of right unmatched external currents after substitution
 
-        combined_currents = sympy.Matrix.vstack(left_left_current, right_right_current) # creates a vector of physical currents for combined module
+        combined_currents = sympy.Matrix.vstack(self.left_left_current, self.right_right_current) # creates a vector of physical currents for combined module
         self.physical_currents = combined_currents # assign to self for use in other methods
 
         #======================================================================================================================================
@@ -481,35 +526,54 @@ class CombiningModules:
         #=========================================================================================================================================
         # Left right splitting the conservation law matrices
 
-        left_mod_chemostat_cons_laws = left_mod.calculate_conservation_laws()[1]
-        right_mod_chemostat_cons_laws = right_mod.calculate_conservation_laws()[1]
+    def calculate_split_conservation_laws(self):
+        
+        left_mod_chemostat_cons_laws = self.left_mod.calculate_conservation_laws()[1]
+        right_mod_chemostat_cons_laws = self.right_mod.calculate_conservation_laws()[1]
 
-        left_mod_left_cons_laws = left_mod_chemostat_cons_laws[:, :len(left_left_current)]
-        left_mod_right_cons_laws = left_mod_chemostat_cons_laws[:, len(left_left_current):]
-        right_mod_left_cons_laws = right_mod_chemostat_cons_laws[:, :len(right_left_current)]
-        right_mod_right_cons_laws = right_mod_chemostat_cons_laws[:, len(right_left_current):]
+        left_mod_left_cons_laws  = left_mod_chemostat_cons_laws[:, :len(self.left_left_current)]
+        left_mod_right_cons_laws = left_mod_chemostat_cons_laws[:, len(self.left_left_current):]
+        right_mod_left_cons_laws = right_mod_chemostat_cons_laws[:, :len(self.right_left_current)]
+        right_mod_right_cons_laws = right_mod_chemostat_cons_laws[:, len(self.right_left_current):]
+
+        return left_mod_left_cons_laws, left_mod_right_cons_laws, right_mod_left_cons_laws, right_mod_right_cons_laws
 
         #=========================================================================================================================================
         # Constructing matrices L_i, L_e and v using these to determine the chemostat conservation laws of the combined module and the selection matrix
+  
+    def calculate_L_i(self):
+        
+        L_i = sympy.Matrix.vstack(-self.calculate_split_conservation_laws()[1], self.calculate_split_conservation_laws()[2])
+        
+        return L_i
 
-        L_i = sympy.Matrix.vstack(-left_mod_right_cons_laws, right_mod_left_cons_laws)
-
+    def calculate_L_e(self):
+  
         L_e = sympy.BlockMatrix([
-        [left_mod_left_cons_laws, sympy.ZeroMatrix(left_mod_left_cons_laws.shape[0], right_mod_right_cons_laws.shape[1])],
-        [sympy.ZeroMatrix(right_mod_right_cons_laws.shape[0], left_mod_left_cons_laws.shape[1]), right_mod_right_cons_laws]])
+        [self.calculate_split_conservation_laws()[0], sympy.ZeroMatrix(self.calculate_split_conservation_laws()[0].shape[0], self.calculate_split_conservation_laws()[3].shape[1])],
+        [sympy.ZeroMatrix(self.calculate_split_conservation_laws()[3].shape[0], self.calculate_split_conservation_laws()[0].shape[1]), self.calculate_split_conservation_laws()[3]]])
         
         L_e = sympy.Matrix(L_e)  
-
-        null_basis_L_i = (L_i.T).nullspace()
+  
+        return L_e
+    
+    def calculate_v(self):
+        null_basis_L_i = (self.calculate_L_i().T).nullspace()
         if null_basis_L_i:
             v = sympy.Matrix.hstack(*null_basis_L_i).T
         else:
             v = sympy.Matrix([])
 
-        combined_conservation_laws_chemostat = v * L_e
-        self.conservation_laws_chemostat = combined_conservation_laws_chemostat
+        return v
 
-        null_basis_cons_laws = (combined_conservation_laws_chemostat).nullspace()
+    def calculate_conservation_laws_chemostat(self):
+        combined_conservation_laws_chemostat = self.calculate_v() * self.calculate_L_e()
+
+        return combined_conservation_laws_chemostat
+
+    def calculate_selection_matrix(self):
+
+        null_basis_cons_laws = (self.calculate_conservation_laws_chemostat()).nullspace()
         if null_basis_cons_laws:
             combined_selection_matrix = sympy.Matrix.hstack(*null_basis_cons_laws)
         else:
@@ -517,26 +581,39 @@ class CombiningModules:
 
         self.selection_matrix = combined_selection_matrix
 
+        return combined_selection_matrix
+
         #=========================================================================================================================================
         # Calculating pi and PI matricies 
+    def calculate_pi_matricies(self):
 
-        pi = sympy.Matrix(L_i.pinv() * L_e)
+        pi = sympy.Matrix(self.calculate_L_i().pinv() * self.calculate_L_e())
         pi_rows, pi_cols = pi.shape
 
-        identity_part_1 = sympy.eye(len(left_left_current), pi_cols)
+        identity_part_1 = sympy.eye(len(self.left_left_current), pi_cols)
         pi_1_3 = identity_part_1.col_join(pi)
 
-        identity_part_2 = sympy.eye(len(right_right_current), pi_cols-pi_rows)
-        zeros_part_2 = sympy.zeros(len(right_right_current), pi_rows)
+        identity_part_2 = sympy.eye(len(self.right_right_current), pi_cols-pi_rows)
+        zeros_part_2 = sympy.zeros(len(self.right_right_current), pi_rows)
         bottom_part_2 = zeros_part_2.row_join(identity_part_2)
         pi_2_3 = (-pi).col_join(bottom_part_2)
 
-        PI_1_3 = sympy.Matrix(left_mod.selection_matrix.pinv() * pi_1_3 * combined_selection_matrix)
-        PI_2_3 = sympy.Matrix(right_mod.selection_matrix.pinv() * pi_2_3 * combined_selection_matrix)
+        return pi_1_3, pi_2_3
+
+    def calculate_PI_matricies(self):
+
+        combined_selection_matrix = self.calculate_selection_matrix()
+        pi_1_3 = self.calculate_pi_matricies()[0]
+        pi_2_3 = self.calculate_pi_matricies()[1]
+        PI_1_3 = sympy.Matrix(self.left_mod.selection_matrix.pinv() * pi_1_3 * combined_selection_matrix)
+        PI_2_3 = sympy.Matrix(self.right_mod.selection_matrix.pinv() * pi_2_3 * combined_selection_matrix)
+
+        return PI_1_3, PI_2_3
 
         #=========================================================================================================================================
         # Relabelling conductance matrix of right module so that the indicies do not overlap with those of the left module
 
+    def calculate_shifted_fundamental_resistance_matrix(self):
         SUB_TO_DIGIT = {'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9'}
         DIGIT_TO_SUB = {v:k for k,v in SUB_TO_DIGIT.items()}
 
@@ -583,14 +660,22 @@ class CombiningModules:
         def shift_matrix_variables(matrix, shift):
             return matrix.applyfunc(lambda e: shift_expr_variables(e, shift))
         
-        left_mod_fundamental_resistance_matrix = left_mod.fundamental_resistance_matrix
-        right_mod_fundamental_resistance_matrix = shift_matrix_variables(right_mod.fundamental_resistance_matrix, left_mod.num_reactions)
-
+        left_mod_fundamental_resistance_matrix = self.left_mod_fundamental_resistance_matrix
+        right_mod_fundamental_resistance_matrix = shift_matrix_variables(self.right_mod_fundamental_resistance_matrix, self.left_mod.num_reactions)
+        
+        return left_mod_fundamental_resistance_matrix, right_mod_fundamental_resistance_matrix
         #=========================================================================================================================================
         # Calculating the conductance matrix of the combined module
+    
+    def calculate_fundamental_resistance_matrix(self):
+        PI_1_3 = self.calculate_PI_matricies()[0]
+        PI_2_3 = self.calculate_PI_matricies()[1]
+        left_mod_fundamental_resistance_matrix = self.calculate_shifted_fundamental_resistance_matrix()[0]
+        right_mod_fundamental_resistance_matrix = self.calculate_shifted_fundamental_resistance_matrix()[1]
 
         combined_fundamental_resistance_matrix = PI_1_3.T * left_mod_fundamental_resistance_matrix * PI_1_3 + PI_2_3.T * right_mod_fundamental_resistance_matrix * PI_2_3
 
+        return combined_fundamental_resistance_matrix
         #=========================================================================================================================================
         # Storing attributes to self that are need for an iterative process of combining modules
 
@@ -605,5 +690,9 @@ class CombiningModules:
     
     def calculate_conservation_laws(self):
         
-        return 0, self.conservation_laws_chemostat
+        return 0, self.calculate_conservation_laws_chemostat()
+    
 
+    
+    def module_properties(self):
+        return ModuleProperties(self.stoich_matrix, self.num_internal_species, self.species_labels, self.species_names)
