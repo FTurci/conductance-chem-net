@@ -15,13 +15,13 @@ init_printing()
 
 class ModuleProperties:
 
-    def __init__(self, stoich_matrix, num_internal_species, species_labels, species_names):
+    def __init__(self, stoich_matrix, num_internal_species, species_names):
         self.stoich_matrix = sympy.Matrix(stoich_matrix)
         self.num_internal_species = num_internal_species
         self.num_external_species = self.stoich_matrix.shape[0] - num_internal_species
         self.num_species = self.stoich_matrix.shape[0]
         self.num_reactions = self.stoich_matrix.shape[1]
-        self.species_labels = species_labels
+        self.species_labels = {j: species_names[j] for j in range(len(species_names))}
         self.species_names = species_names
         self.internal_stoich_matrix = self.stoich_matrix[0:self.num_internal_species, :]
         self.external_stoich_matrix = self.stoich_matrix[self.num_internal_species: len(self.stoich_matrix), :]
@@ -695,4 +695,5 @@ class CombiningModules:
 
     
     def module_properties(self):
-        return ModuleProperties(self.stoich_matrix, self.num_internal_species, self.species_labels, self.species_names)
+        return ModuleProperties(self.stoich_matrix, self.num_internal_species, self.species_names)
+    
