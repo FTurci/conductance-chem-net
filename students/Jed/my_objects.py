@@ -679,11 +679,6 @@ class CombiningModules:
         #=========================================================================================================================================
         # Storing attributes to self that are need for an iterative process of combining modules
 
-        self.fundamental_resistance_matrix = combined_fundamental_resistance_matrix
-        self.fundamental_conductance_matrix = combined_fundamental_resistance_matrix.inv()
-        self.selection_matrix = combined_selection_matrix
-        self.conservation_laws_chemostat = combined_conservation_laws_chemostat
-
     def calculate_physical_currents(self):
         
         return self.physical_currents
