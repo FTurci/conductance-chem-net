@@ -187,7 +187,7 @@ class ModuleProperties:
 
 
         self.cons_laws = cons_laws.T # assign to self for use in other methods
-        self.chemostat_cons_laws = chemostat_laws.T # assign to self for use in other methods
+        self.conservation_laws_chemostat = chemostat_laws.T # assign to self for use in other methods
 
         return cons_laws.T, chemostat_laws.T # return transpose to match equations in paper { L^(1) and l^(1) respectively}
     
@@ -367,14 +367,9 @@ class CombiningModules:
         self.left_mod = left_mod
         self.right_mod = right_mod
 
-        self.left_mod_physical_currents = left_mod.calculate_physical_currents() # calculate physical currents for left module
-        self.right_mod_physical_currents = right_mod.calculate_physical_currents() # calculate physical currents for right module
-        self.left_mod_selection_matrix = left_mod.calculate_selection_matrix() # calculate selection matrix for left module
-        self.right_mod_selection_matrix = right_mod.calculate_selection_matrix() # calculate selection matrix for right module
-        self.left_mod_conservation_laws_chemostat = left_mod.calculate_conservation_laws()[1] # calculate chemostat conservation laws for left module
-        self.right_mod_conservation_laws_chemostat = right_mod.calculate_conservation_laws()[1] # calculate chemostat conservation laws for right module
-        self.left_mod_fundamental_resistance_matrix = left_mod.calculate_fundamental_resistance_matrix() # calculate fundamental resistance matrix for left module
-        self.right_mod_fundamental_resistance_matrix = right_mod.calculate_fundamental_resistance_matrix() # calculate fundamental resistance matrix for right module
+
+
+
 
     
     
@@ -541,39 +536,39 @@ class CombiningModules:
         #=========================================================================================================================================
         # Constructing matrices L_i, L_e and v using these to determine the chemostat conservation laws of the combined module and the selection matrix
   
-    def calculate_L_i(self):
-        
-        L_i = sympy.Matrix.vstack(-self.calculate_split_conservation_laws()[1], self.calculate_split_conservation_laws()[2])
-        
-        return L_i
+    def calculate_L_i__L_e__v(self):
+        left_mod_left_cons_laws, left_mod_right_cons_laws, right_mod_left_cons_laws, right_mod_right_cons_laws = self.calculate_split_conservation_laws()
 
-    def calculate_L_e(self):
-  
+        L_i = sympy.Matrix.vstack(-left_mod_right_cons_laws, right_mod_left_cons_laws)
+
         L_e = sympy.BlockMatrix([
-        [self.calculate_split_conservation_laws()[0], sympy.ZeroMatrix(self.calculate_split_conservation_laws()[0].shape[0], self.calculate_split_conservation_laws()[3].shape[1])],
-        [sympy.ZeroMatrix(self.calculate_split_conservation_laws()[3].shape[0], self.calculate_split_conservation_laws()[0].shape[1]), self.calculate_split_conservation_laws()[3]]])
-        
-        L_e = sympy.Matrix(L_e)  
-  
-        return L_e
-    
-    def calculate_v(self):
-        null_basis_L_i = (self.calculate_L_i().T).nullspace()
+        [left_mod_left_cons_laws, sympy.ZeroMatrix(left_mod_left_cons_laws.shape[0], right_mod_right_cons_laws.shape[1])],
+        [sympy.ZeroMatrix(right_mod_right_cons_laws.shape[0], left_mod_left_cons_laws.shape[1]), right_mod_right_cons_laws]])
+
+        null_basis_L_i = (L_i.T).nullspace()
         if null_basis_L_i:
             v = sympy.Matrix.hstack(*null_basis_L_i).T
         else:
             v = sympy.Matrix([])
 
-        return v
+        
+        L_e = sympy.Matrix(L_e)  
+        
+        return L_i, L_e, v
 
-    def calculate_conservation_laws_chemostat(self):
-        combined_conservation_laws_chemostat = self.calculate_v() * self.calculate_L_e()
+    def calculate_conservation_laws(self):
 
-        return combined_conservation_laws_chemostat
+        #==========================================================================================================================================
+        # Calculting the chemostat conservation laws
 
-    def calculate_selection_matrix(self):
+        L_i, L_e, v = self.calculate_L_i__L_e__v()
+        
+        conservation_laws_chemostat = v * L_e
 
-        null_basis_cons_laws = (self.calculate_conservation_laws_chemostat()).nullspace()
+        #=========================================================================================================================================
+        # Calculating the selection matrix for the combined module using the nullspace of the chemostat conservation laws
+
+        null_basis_cons_laws = conservation_laws_chemostat.nullspace()
         if null_basis_cons_laws:
             combined_selection_matrix = sympy.Matrix.hstack(*null_basis_cons_laws)
         else:
@@ -581,13 +576,10 @@ class CombiningModules:
 
         self.selection_matrix = combined_selection_matrix
 
-        return combined_selection_matrix
-
         #=========================================================================================================================================
         # Calculating pi and PI matricies 
-    def calculate_pi_matricies(self):
 
-        pi = sympy.Matrix(self.calculate_L_i().pinv() * self.calculate_L_e())
+        pi = sympy.Matrix(L_i.pinv() * L_e)
         pi_rows, pi_cols = pi.shape
 
         identity_part_1 = sympy.eye(len(self.left_left_current), pi_cols)
@@ -598,17 +590,14 @@ class CombiningModules:
         bottom_part_2 = zeros_part_2.row_join(identity_part_2)
         pi_2_3 = (-pi).col_join(bottom_part_2)
 
-        return pi_1_3, pi_2_3
+        PI_1_3 = sympy.Matrix(self.left_mod.calculate_selection_matrix().pinv() * pi_1_3 * combined_selection_matrix)
+        PI_2_3 = sympy.Matrix(self.right_mod.calculate_selection_matrix().pinv() * pi_2_3 * combined_selection_matrix)
 
-    def calculate_PI_matricies(self):
+        return 0, conservation_laws_chemostat, combined_selection_matrix, pi_1_3, pi_2_3, PI_1_3, PI_2_3
+    
+    def calculate_selection_matrix(self):
 
-        combined_selection_matrix = self.calculate_selection_matrix()
-        pi_1_3 = self.calculate_pi_matricies()[0]
-        pi_2_3 = self.calculate_pi_matricies()[1]
-        PI_1_3 = sympy.Matrix(self.left_mod.selection_matrix.pinv() * pi_1_3 * combined_selection_matrix)
-        PI_2_3 = sympy.Matrix(self.right_mod.selection_matrix.pinv() * pi_2_3 * combined_selection_matrix)
-
-        return PI_1_3, PI_2_3
+        return self.selection_matrix
 
         #=========================================================================================================================================
         # Relabelling conductance matrix of right module so that the indicies do not overlap with those of the left module
@@ -660,21 +649,21 @@ class CombiningModules:
         def shift_matrix_variables(matrix, shift):
             return matrix.applyfunc(lambda e: shift_expr_variables(e, shift))
         
-        left_mod_fundamental_resistance_matrix = self.left_mod_fundamental_resistance_matrix
-        right_mod_fundamental_resistance_matrix = shift_matrix_variables(self.right_mod_fundamental_resistance_matrix, self.left_mod.num_reactions)
+        left_mod_fundamental_resistance_matrix = self.left_mod.calculate_fundamental_resistance_matrix()
+        right_mod_fundamental_resistance_matrix = shift_matrix_variables(self.right_mod.calculate_fundamental_resistance_matrix(), self.left_mod.num_reactions)
         
         return left_mod_fundamental_resistance_matrix, right_mod_fundamental_resistance_matrix
         #=========================================================================================================================================
         # Calculating the conductance matrix of the combined module
     
     def calculate_fundamental_resistance_matrix(self):
-        PI_1_3 = self.calculate_PI_matricies()[0]
-        PI_2_3 = self.calculate_PI_matricies()[1]
-        left_mod_fundamental_resistance_matrix = self.calculate_shifted_fundamental_resistance_matrix()[0]
-        right_mod_fundamental_resistance_matrix = self.calculate_shifted_fundamental_resistance_matrix()[1]
+        a, b, c, d, e, PI_1_3, PI_2_3 = self.calculate_conservation_laws()
+        left_mod_fundamental_resistance_matrix, right_mod_fundamental_resistance_matrix = self.calculate_shifted_fundamental_resistance_matrix()
 
         combined_fundamental_resistance_matrix = PI_1_3.T * left_mod_fundamental_resistance_matrix * PI_1_3 + PI_2_3.T * right_mod_fundamental_resistance_matrix * PI_2_3
 
+        self.fundamental_resistance_matrix = combined_fundamental_resistance_matrix # assign to self for use in other methods
+        
         return combined_fundamental_resistance_matrix
         #=========================================================================================================================================
         # Storing attributes to self that are need for an iterative process of combining modules
@@ -683,12 +672,6 @@ class CombiningModules:
         
         return self.physical_currents
     
-    def calculate_conservation_laws(self):
-        
-        return 0, self.calculate_conservation_laws_chemostat()
-    
-
     
     def module_properties(self):
-        return ModuleProperties(self.stoich_matrix, self.num_internal_species, self.species_names)
-    
+        return ModuleProperties(self.stoich_matrix, self.num_internal_species, self.species_names)  
