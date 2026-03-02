@@ -531,8 +531,10 @@ class RunSSA:
         S_ext = self.module.external_stoich_matrix
         L = self.module.calculate_selection_matrix()
 
+        # Create objects: SM_externals * cycle_matrix, pseudoinverse of selection matrix
         S_ext_C = S_ext * C
         L_pinv = L.pinv()
+
         n_indep = L_pinv.rows
 
         G_fundamental_list = []
@@ -544,6 +546,8 @@ class RunSSA:
             resistances = []
             skip = False
 
+            # Create the resistances along each reaction
+
             for r in range(n_rxn):
                 F_r = self.sweep_F_means[s, r]
                 I_r = self.sweep_I_means[s, r]
@@ -553,15 +557,21 @@ class RunSSA:
                     skip = True
                     break
 
+            # If we have any zero or NaN resistances, we cannot compute the conductance for this sweep point, so we skip it and store NaNs.
+
             if skip:
                 G_fundamental_list.append(None)
                 G_scalar_list.append(float('nan'))
                 G_eigenvalue_list.append([float('nan')] * n_indep)
                 continue
+            
+            # Create the diagonal resistance matrix for this sweep
 
             R_diag = Matrix.zeros(n_rxn, n_rxn)
             for r in range(n_rxn):
                 R_diag[r, r] = resistances[r]
+
+            # Create cycle conductance matrix for this sweep, protect against non-invertibility
 
             try:
                 G_cycle = (C.T * R_diag * C).inv()
@@ -571,16 +581,26 @@ class RunSSA:
                 G_scalar_list.append(float('nan'))
                 G_eigenvalue_list.append([float('nan')] * n_indep)
                 continue
+            
+            # Create physical and fundamental conductance matrices for this sweep
 
             G_phys = S_ext_C * G_cycle * S_ext_C.T
             G_fund = L_pinv * G_phys * L_pinv.T
 
-            G_fundamental_list.append(G_fund)
+            G_fundamental_list.append(G_fund) # store the full fundamental CM for this sweep
+
+            # Check shape of fundamental CM
 
             if G_fund.shape == (1, 1):
+
+                # If scalar, store the single value
+
                 G_scalar_list.append(float(G_fund[0, 0]))
                 G_eigenvalue_list.append([float(G_fund[0, 0])])
             else:
+
+                # If not scalar, store eigenvalues
+
                 G_fund_np = np.array(G_fund.tolist(), dtype=np.float64)
                 eigvals = np.sort(np.linalg.eigvalsh(G_fund_np))
                 G_eigenvalue_list.append(eigvals.tolist())
@@ -596,6 +616,8 @@ class RunSSA:
         self.sweep_G_fundamental = G_fundamental_list
         self.sweep_G_scalar = np.array(G_scalar_list)
         self.sweep_G_eigenvalues = np.array(G_eigenvalue_list)
+
+        # Compute analytical data if it is passed into the function.
 
         if analytical_currents is not None and analytical_forces is not None:
             analytical_G = []
@@ -645,6 +667,12 @@ class RunSSA:
 
             self.analytical_G = analytical_G
 
+        # return analytical_G iff it is not empty.
+        if analytical_currents is not None and analytical_forces is not None and len(analytical_G) > 0:
+            return G_fundamental_list, analytical_G
+        else:
+            return G_fundamental_list 
+    
     # ==========================================================
     # PLOT CONDUCTANCE
     # ==========================================================
@@ -847,6 +875,162 @@ class RunSSA:
             fig.tight_layout()
             plt.show()
 
+# function to plot the combined conductances (seperate from a single module's RunSSA attributes
+
+def plot_combined_conductance(
+    combined_CMs,
+    count_values,
+    species_label='Species',
+    marker_size=60,
+    cmap='viridis'
+):
+    """
+    Plot combined fundamental conductance vs swept species count.
+
+    Scalar case (1x1 matrices):
+        - G vs count plotted directly.
+
+    Matrix case:
+        - Eigenvalues of G vs count.
+
+    Parameters
+    ----------
+    combined_CMs : list of sympy Matrix
+        List of combined fundamental conductance matrices, one per sweep point.
+        As returned by CombiningModules.numerical_combined_fundamental_CMs.
+    count_values : array-like
+        The swept species count values used to generate the data.
+    species_label : str, optional
+        Label for the swept species on the x-axis.
+    marker_size : int, optional
+        Scatter plot marker size.
+    cmap : str, optional
+        Matplotlib colourmap name.
+    """
+
+    count_values = np.asarray(count_values, dtype=np.float64)
+
+    # ── Determine scalar or matrix case from first valid entry ───────────────
+
+    first_valid = next((CM for CM in combined_CMs if CM is not None), None)
+
+    if first_valid is None:
+        raise RuntimeError("No valid conductance matrices to plot.")
+
+    is_scalar = (first_valid.shape == (1, 1))
+
+    # =========================================================================
+    # SCALAR CASE
+    # =========================================================================
+
+    if is_scalar:
+
+        valid_counts = []
+        valid_G      = []
+
+        for i, CM in enumerate(combined_CMs):
+
+            if CM is None:
+                continue
+
+            try:
+                valid_counts.append(count_values[i])
+                valid_G.append(float(CM[0, 0]))
+            except Exception as e:
+                print(f"Sweep point {i}: could not extract scalar value — {e}")
+
+        valid_counts = np.array(valid_counts)
+        valid_G      = np.array(valid_G)
+
+        fig, ax = plt.subplots(figsize=(10, 7))
+
+        ax.scatter(
+            valid_counts,
+            valid_G,
+            s=marker_size,
+            color='green',
+            edgecolors='black',
+            linewidths=0.5,
+            label='$G^{(3)}$',
+            zorder=3
+        )
+
+        ax.set_xlabel(f'Initial {species_label} count', fontsize=13)
+        ax.set_ylabel('Conductance',                    fontsize=13)
+        ax.set_title('Combined Module: Fundamental Conductance vs Count',
+                     fontsize=14)
+        ax.legend(fontsize=12)
+        ax.grid(True)
+        fig.tight_layout()
+        plt.show()
+
+    # =========================================================================
+    # MATRIX CASE
+    # =========================================================================
+
+    else:
+
+        eigenvalue_list = []
+
+        for i, CM in enumerate(combined_CMs):
+
+            if CM is None:
+                eigenvalue_list.append(None)
+                continue
+
+            try:
+                CM_np   = np.array(CM.tolist(), dtype=np.float64)
+                eigvals = np.sort(np.linalg.eigvalsh(CM_np))
+                eigenvalue_list.append(eigvals)
+            except Exception as e:
+                print(f"Sweep point {i}: could not compute eigenvalues — {e}")
+                eigenvalue_list.append(None)
+
+        n_eigs = next(
+            (len(e) for e in eigenvalue_list if e is not None), 0
+        )
+
+        if n_eigs == 0:
+            raise RuntimeError("No valid eigenvalues could be computed.")
+
+        valid_counts  = []
+        valid_eigvals = [[] for _ in range(n_eigs)]
+
+        for i, eigvals in enumerate(eigenvalue_list):
+            if eigvals is not None:
+                valid_counts.append(count_values[i])
+                for e in range(n_eigs):
+                    valid_eigvals[e].append(eigvals[e])
+
+        valid_counts = np.array(valid_counts)
+
+        colours_map = plt.cm.get_cmap(cmap, max(n_eigs, 3))
+
+        fig, ax = plt.subplots(figsize=(10, 7))
+
+        for e in range(n_eigs):
+            ax.scatter(
+                valid_counts,
+                valid_eigvals[e],
+                s=marker_size,
+                color=colours_map(e),
+                edgecolors='black',
+                linewidths=0.5,
+                label=f'$\\lambda_{{{e+1}}}(G^{{(3)}})$',
+                zorder=3
+            )
+
+        ax.set_xlabel(f'Initial {species_label} count', fontsize=13)
+        ax.set_ylabel('Conductance Eigenvalue',          fontsize=13)
+        ax.set_title('Combined Module: Fundamental Conductance Eigenvalues vs Count',
+                     fontsize=14)
+        ax.legend(fontsize=12)
+        ax.grid(True)
+        fig.tight_layout()
+        plt.show()
+
+# all imports
+
 import hypernetx as hnx
 import numpy as np
 import pandas as pd
@@ -872,6 +1056,8 @@ class ModuleProperties:
         self.species_names = species_names
         self.internal_stoich_matrix = self.stoich_matrix[0:self.num_internal_species, :]
         self.external_stoich_matrix = self.stoich_matrix[self.num_internal_species: len(self.stoich_matrix), :]
+        self.selection_matrix = self.calculate_selection_matrix()
+        self.cycle_matrix = self.calculate_reaction_cycle_matrix()
 
 
         # LABELLING FOR SPECIES, FORCES, EDGE CURRENTS, CHEMICAL POTENTIALS
@@ -1170,10 +1356,11 @@ class ModuleProperties:
 
         return fundamental_resistance_matrix
 
-    
+
+
 class CombiningModules:
 
-    def __init__(self, left_mod, right_mod):
+    def __init__(self, left_mod, right_mod, left_mod_numerical_CM=None, right_mod_numerical_CM=None):
                 
         #=====================================================================================================================================
         # IDENTIFY MATCHING EXTERNAL SPECIES
@@ -1324,6 +1511,12 @@ class CombiningModules:
         self.species_labels = combined_labels # assign to self for use in other methods
         self.species_names = list(combined_labels.values()) # list of combined species names
 
+        # For the overlapping counts attribute
+
+        self.matched_species_names = [left_mod.species_labels[i] for i in keys_1]
+        self.left_mod              = left_mod
+        self.right_mod             = right_mod
+
         #=========================================================================================================================================
         # Left right splitting the conservation law matrices
 
@@ -1429,15 +1622,43 @@ class CombiningModules:
         def shift_matrix_variables(matrix, shift):
             return matrix.applyfunc(lambda e: shift_expr_variables(e, shift))
         
-        left_mod_fundamental_resistance_matrix = left_mod.fundamental_resistance_matrix
-        right_mod_fundamental_resistance_matrix = shift_matrix_variables(right_mod.fundamental_resistance_matrix, left_mod.num_reactions)
+        #  If we have numerical data for the CMs
 
-        #=========================================================================================================================================
-        # Calculating the conductance matrix of the combined module
+        if left_mod_numerical_CM is not None and right_mod_numerical_CM is not None:
 
-        combined_fundamental_resistance_matrix = PI_1_3.T * left_mod_fundamental_resistance_matrix * PI_1_3 + PI_2_3.T * right_mod_fundamental_resistance_matrix * PI_2_3
+            if len(left_mod_numerical_CM) != len(right_mod_numerical_CM):
 
-        #=========================================================================================================================================
+                raise ValueError("The number of numerical conductance matrices provided for the left and right modules must be the same.")
+
+            self.numerical_combined_fundamental_CMs = []
+
+            for i in range(len(left_mod_numerical_CM)):
+
+                left_CM = left_mod_numerical_CM[i]
+                right_CM = right_mod_numerical_CM[i]
+
+
+                #=========================================================================================================================================
+                # Calculating the conductance matrix of the combined module
+
+                combined_fundamental_resistance_matrix = PI_1_3.T * left_CM.inv() * PI_1_3 + PI_2_3.T * right_CM.inv() * PI_2_3
+
+                self.numerical_combined_fundamental_CMs.append(combined_fundamental_resistance_matrix.inv())
+
+                #=========================================================================================================================================
+
+        else:
+
+            left_mod_fundamental_resistance_matrix = left_mod.fundamental_resistance_matrix
+            right_mod_fundamental_resistance_matrix = shift_matrix_variables(right_mod.fundamental_resistance_matrix, left_mod.num_reactions)
+
+            #=========================================================================================================================================
+            # Calculating the conductance matrix of the combined module
+
+            combined_fundamental_resistance_matrix = PI_1_3.T * left_mod_fundamental_resistance_matrix * PI_1_3 + PI_2_3.T * right_mod_fundamental_resistance_matrix * PI_2_3
+
+            #=========================================================================================================================================
+
         # Storing attributes to self that are need for an iterative process of combining modules
 
         self.fundamental_resistance_matrix = combined_fundamental_resistance_matrix
@@ -1452,7 +1673,139 @@ class CombiningModules:
     def calculate_conservation_laws(self):
         
         return 0, self.conservation_laws_chemostat
+    
+    #=========================================================================================================================================
+    # Create new counts list automatically from the counts lists of the two modules (From Claude Sonnet 4.6)
 
+    def build_combined_initial_counts_and_rates(self, left_initial_counts, right_initial_counts, left_rates, right_rates):
+        """
+        Merges two initial count dictionaries into the combined module species
+        ordering, prompting the user for values of overlapping species. Combines rates from two modules 
+        into the correct ordering for the combined module. Since reactions are ordered as [left | right] in 
+        the combined stoichiometric matrix, this is a direct concatenation.
+
+        Parameters
+        ----------
+        left_initial_counts : dict
+            {species_name: count} for left module.
+        right_initial_counts : dict
+            {species_name: count} for right module.
+        left_rates : list
+            Rates for left module reactions, ordered as forward/backward 
+            pairs [k1+, k1-, k2+, k2-, ...].
+        right_rates : list
+            Rates for right module reactions, ordered as forward/backward
+            pairs [k4+, k4-, k5+, k5-, ...].
+
+        Returns
+        -------
+        combined_initial_counts : list
+            Initial counts in the correct species order for the combined module.
+        combined_rates : list
+            Combined rates in correct order for the combined module. 
+        """
+
+        # ── Prompt user for overlapping species ──────────────────────────────────
+
+        overlap_values = {}
+
+        print("\n=== Overlapping species detected ===")
+        print(f"  {self.matched_species_names}")
+        print("These species appear in both modules and are now internal.")
+        print("Please enter a single initial count for each:\n")
+
+        for name in self.matched_species_names:
+
+            left_val  = left_initial_counts.get(name,  None)
+            right_val = right_initial_counts.get(name, None)
+
+            print(f"  Species '{name}':")
+            if left_val  is not None: print(f"    Left  module value : {left_val}")
+            if right_val is not None: print(f"    Right module value : {right_val}")
+
+            while True:
+                try:
+                    user_val = float(input(f"  Enter initial count for '{name}': "))
+                    overlap_values[name] = user_val
+                    break
+                except ValueError:
+                    print("  Invalid input. Please enter a number.")
+
+        # ── Merge into combined species order ────────────────────────────────────
+
+        combined_initial_counts = []
+
+        for idx, name in self.species_labels.items():
+
+            if name in overlap_values:
+                # Overlapping species — use user value
+                combined_initial_counts.append(overlap_values[name])
+
+            elif name in left_initial_counts:
+                # Left module species
+                combined_initial_counts.append(left_initial_counts[name])
+
+            elif name in right_initial_counts:
+                # Right module species
+                combined_initial_counts.append(right_initial_counts[name])
+
+            else:
+                # Not found in either — prompt user
+                print(f"\nWarning: '{name}' not found in either initial count dict.")
+                while True:
+                    try:
+                        user_val = float(input(f"  Enter initial count for '{name}': "))
+                        combined_initial_counts.append(user_val)
+                        break
+                    except ValueError:
+                        print("  Invalid input. Please enter a number.")
+
+        # ── Print summary ────────────────────────────────────────────────────────
+
+        print("\n=== Combined initial counts ===")
+        for idx, (name, val) in enumerate(
+            zip(self.species_names, combined_initial_counts)
+        ):
+            overlap_flag = ' ← user entered' if name in self.matched_species_names else ''
+            print(f"  [{idx}] {name:12s} : {val}{overlap_flag}")
 
         
+       # Now do the rates, simply need to concatenate the lists
+
+        # Validate lengths against known number of reactions
+        expected_left  = self.left_mod.num_reactions  * 2   # forward + backward per reaction
+        expected_right = self.right_mod.num_reactions * 2
+
+        if len(left_rates) != expected_left:
+            raise ValueError(
+                f"Expected {expected_left} rates for left module "
+                f"({self.left_mod.num_reactions} reactions × 2), "
+                f"got {len(left_rates)}."
+            )
+
+        if len(right_rates) != expected_right:
+            raise ValueError(
+                f"Expected {expected_right} rates for right module "
+                f"({self.right_mod.num_reactions} reactions × 2), "
+                f"got {len(right_rates)}."
+            )
+
+        combined_rates = list(left_rates) + list(right_rates)
+
+        # ── Print summary ────────────────────────────────────────────────────────
+
+        print("\n=== Combined rates ===")
+        rxn_idx = 1
+        for i in range(0, len(combined_rates), 2):
+            module_label = (
+                'left'  if i <  expected_left else
+                'right'
+            )
+            print(f"  Reaction {rxn_idx:2d} ({module_label:5s}) : "
+                f"k+ = {combined_rates[i]:.4g},  "
+                f"k- = {combined_rates[i+1]:.4g}")
+            rxn_idx += 1
+
         
+
+        return combined_initial_counts, combined_rates
