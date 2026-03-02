@@ -847,8 +847,6 @@ class RunSSA:
             fig.tight_layout()
             plt.show()
 
-# all imports
-
 import hypernetx as hnx
 import numpy as np
 import pandas as pd
