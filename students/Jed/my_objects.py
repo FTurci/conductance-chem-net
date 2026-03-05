@@ -268,8 +268,10 @@ class ModuleProperties:
         Returns:
             cycle_resistance_matrix (Sympy Matrix): Cycle resistance matrix for the module"""
 
-        cycle_resistance_matrix = self.calculate_reaction_cycle_matrix().T * self.calculate_reaction_resistance_matrix() \
-        * self.calculate_reaction_cycle_matrix()
+        reaction_cycle_matrix = self.calculate_reaction_cycle_matrix()
+        
+        cycle_resistance_matrix = reaction_cycle_matrix.T * self.calculate_reaction_resistance_matrix() \
+        * reaction_cycle_matrix
 
         self.cycle_resistance_matrix = cycle_resistance_matrix # assign to self for use in other methods
 
@@ -284,9 +286,11 @@ class ModuleProperties:
         Returns:
             physical_conductance_matrix (Sympy Matrix): Physical conductance matrix for the module
         """
-
-        physical_conductance_matrix = self.calculate_coupling_matrix() * self.calculate_cycle_resistance_matrix().inv() \
-              * self.calculate_coupling_matrix().T        
+        
+        coupling_matrix = self.calculate_coupling_matrix()
+        
+        physical_conductance_matrix = coupling_matrix * self.calculate_cycle_resistance_matrix().inv() \
+              * coupling_matrix.T        
 
         self.physical_conductance_matrix = physical_conductance_matrix # assign to self for use in other methods
 
@@ -301,8 +305,9 @@ class ModuleProperties:
         Returns:
             fundamental_conductance_matrix (Sympy Matrix): Fundamental conductance matrix for the module
         """
+        selection_matrix = self.calculate_selection_matrix()
 
-        fundamental_conductance_matrix = self.calculate_selection_matrix().pinv() * self.calculate_physical_conductance_matrix() * self.calculate_selection_matrix().T.pinv()
+        fundamental_conductance_matrix = selection_matrix.pinv() * self.calculate_physical_conductance_matrix() * selection_matrix.T.pinv()
 
         self.fundamental_conductance_matrix = fundamental_conductance_matrix # assign to self for use in other methods
 
