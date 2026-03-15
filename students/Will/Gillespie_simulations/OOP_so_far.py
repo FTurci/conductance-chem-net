@@ -24,8 +24,10 @@ def ssa_core(
     store_trajectories,
     burn_in
 ):
-    # ---- Internal copy: prevents in-place mutation of caller's array ----
+    # Create a copy of the user's initial counts, so that each subsequent call of this function is independent.
     pops = current_pops.copy()
+
+    # initial times
 
     t = 0.0
     T = final_time
@@ -34,7 +36,9 @@ def ssa_core(
     n_species = len(pops)
     n_reactions = SM.shape[1]
 
-    if store_trajectories:
+    # initialise arrays
+
+    if store_trajectories: # this is required for plotting the counts vs time
         time_history = np.zeros(max_steps)
         pop_history = np.zeros((max_steps, n_species))
     else:
@@ -43,13 +47,19 @@ def ssa_core(
 
     reaction_chosen_tracker = np.zeros(n_reactions)
     force_sums = np.zeros(stoich_cols)
+    # 
 
     step_counter = 0
     if store_trajectories:
         time_history[0] = t
         pop_history[0, :] = pops
 
+    # SSA Algorithm core loop:
+
     while t < T:
+
+        # 1) Build propensity vector in place - it is a function of counts (concentration) so varies with each instance of loop
+
         propensity_vector = np.zeros(n_reactions)
         for a in range(n_reactions):
             product_of_counts = 1.0
@@ -57,9 +67,13 @@ def ssa_core(
                 product_of_counts *= pops[idx]
             propensity_vector[a] = product_of_counts * rates_list[a]
 
+        # 2) Sum the propensity vector elements for our reaction weight
+
         a0 = np.sum(propensity_vector)
         if a0 == 0.0:
             break
+        
+        # 3) Generate the random numbers and determine which reaction fires
 
         r1 = np.random.rand()
         r2 = np.random.rand()
@@ -73,27 +87,38 @@ def ssa_core(
             if target_value <= cumulative:
                 reaction_chosen = n
                 break
+        
+        # 4) Determine time spent in a particular system state
 
-        t_next = t + tau
-        if t_next > burn_in:
-            if t < burn_in:
-                tau_effective = t_next - burn_in
+        t_next = t + tau # when the next reaction will occur
+        if t_next > burn_in: # if this is beyond the burn-in
+            if t < burn_in: # but if the current time in the simulation is less than the burn in
+                tau_effective = t_next - burn_in # the system spends the difference of these in the current state
             else:
-                tau_effective = tau
-            steady_time += tau_effective
-            reaction_chosen_tracker[reaction_chosen] += 1
+                tau_effective = tau # if the current time is beyond the burn-in, then all of tau is spent in the current state
 
+            steady_time += tau_effective # track the total time spent in a steady state (this is time beyond the burn in across every iteration of the loop)
+
+            reaction_chosen_tracker[reaction_chosen] += 1 # add +1 times fired to the chosen reaction
+
+
+            # calculate the local affinity of each reaction in the system during the time it spends in this stationary state:
             l = 0
             pair_index = 0
             while l < 2 * stoich_cols:
                 if propensity_vector[l] > 0.0 and propensity_vector[l+1] > 0.0:
-                    force_sums[pair_index] += tau_effective * math.log(
+                    
+                    # Find the ratio of the forward/backward propensities 
+                    force_sums[pair_index] += tau_effective * math.log( 
                         propensity_vector[l] / propensity_vector[l+1]
                     )
                 l += 2
                 pair_index += 1
 
+        # Update the time spent in the simulation
         t += tau
+
+        # Update the in-loop population counts with the entry value of the SM for the chosen reaction
         for m in range(num_internal_species):
             pops[m] += SM[m, reaction_chosen]
 
@@ -298,8 +323,8 @@ class RunSSA:
         # SSA simulations and returns the currents and forces for each in form as explained above.
         
         currents, forces = self.run_IF_sweep(
-            0,
-            [self.initial_counts[0]],
+            [0],
+            np.array([[self.initial_counts[0]]]),
             num_iterations,
             covariance_reaction_indices=None,
             verbose=False
@@ -371,20 +396,22 @@ class RunSSA:
         
 
         # ── Normalise inputs to lists ─────────────────────────────────────────────
-
+        
 
         if isinstance(species_index, int):
-            species_index = [species_index]
+            self.species_index = [species_index]
             count_values  = [count_values]
-
-        self.species_indexes = species_index
+        self.species_index = species_index
+        self.species_indexes = self.species_index
         self.count_values = count_values
 
-        if len(species_index) != len(count_values):
-            raise ValueError(
-                f"species_index has {len(species_index)} entries but "
-                f"count_values has {len(count_values)} — must be equal."
-            )
+        
+
+        # if len(self.species_index) != len(count_values):
+        #     raise ValueError(
+        #         f"species_index has {len(self.species_index)} entries but "
+        #         f"count_values has {len(count_values)} — must be equal."
+        #     )
 
         count_values = [np.asarray(cv, dtype=np.float64) for cv in count_values]
 
@@ -419,7 +446,7 @@ class RunSSA:
 
                 # Start from initial counts and overwrite each varied species
                 fresh_pops = list(self.initial_counts)
-                for idx, cv in zip(species_index, count_values):
+                for idx, cv in zip(self.species_index, count_values):
                     fresh_pops[idx] = float(cv[s])
 
                 self.run_SSA_and_plot_counts(
@@ -447,7 +474,7 @@ class RunSSA:
             if verbose:
                 varied_str = ', '.join(
                     f"[{self.species_names[idx]}] = {cv[s]:.0f}"
-                    for idx, cv in zip(species_index, count_values)
+                    for idx, cv in zip(self.species_index, count_values)
                 )
                 print(f"Sweep {s + 1}/{n_sweeps}  ({varied_str})")
 
@@ -455,8 +482,8 @@ class RunSSA:
         if verbose:
             print(f"Total sweep time: {t_end - t_start:.2f} s")
 
-        self.sweep_count_values              = count_values[0]   # primary sweep axis for plotting
-        self.sweep_species_index             = species_index[0]  # primary species for plotting
+        # self.sweep_count_values              = count_values[0]   # primary sweep axis for plotting
+        # self.sweep_species_index             = species_index[0]  # primary species for plotting
         self.sweep_I_means                   = I_means
         self.sweep_F_means                   = F_means
         self.sweep_I_variances               = I_vars
@@ -465,7 +492,8 @@ class RunSSA:
         self.sweep_covariance_reaction_indices = covariance_reaction_indices
 
         return currents_block, forces_block
-        
+
+    
 
     # ==========================================================
     # PLOT I-F CURVES
@@ -496,13 +524,37 @@ class RunSSA:
 
         # for l in range(len(self.species_indexes)): # for every varies species
 
+        if colour_by_count:
+
+                while True:
+
+                    try:
+                        user_selected_xaxis = int(input("Enter index of varied species for colour-grading (str) : "))
+                        if 0 <= user_selected_xaxis < len(self.count_values):
+                            break
+                        else:
+                            print(f"Please enter an index between 0 and {len(self.count_values)-1}.")
+                    except ValueError:
+                        print("Invalid input. Please enter an integer.")
+
+                c_vals = self.count_values[user_selected_xaxis]
+                
+                potential_col_bar_axis_label = []
+
+                for index in self.species_index:
+
+                    potential_col_bar_axis_label.append(self.species_names[index])
+
+                col_bar_axis_label = potential_col_bar_axis_label[user_selected_xaxis]
+
 
         for r in reaction_indices:
             fig, ax = plt.subplots(figsize=(8, 8))
 
             F_vals = self.sweep_F_means[:, r]
             I_vals = self.sweep_I_means[:, r]
-            c_vals = self.sweep_count_values
+
+            
 
             if show_errorbars:
                 F_err = np.sqrt(self.sweep_F_variances[:, r])
@@ -510,11 +562,13 @@ class RunSSA:
                 ax.errorbar(
                     F_vals, I_vals,
                     xerr=F_err, yerr=I_err,
-                    fmt='none', ecolor='grey', alpha=0.3,
+                    fmt='none', ecolor='grey', alpha=0.75,
                     elinewidth=0.8, zorder=1
                 )
 
             if colour_by_count:
+
+
                 sc = ax.scatter(
                     F_vals, I_vals,
                     c=c_vals, cmap=cmap, s=marker_size,
@@ -523,24 +577,27 @@ class RunSSA:
                     zorder=3
                 )
                 cbar = plt.colorbar(sc, ax=ax)
-                species_label = self.species_names[self.species_indexes[0]]
-                cbar.set_label(f'Initial {species_label} count')
+                # species_label = self.species_names[self.species_indexes[0]]
+                cbar.set_label(f'Initial {col_bar_axis_label} count')
             else:
                 ax.scatter(F_vals, I_vals, s=marker_size, label='SSA', zorder=3)
 
-            if r in analytical_currents and r in analytical_forces:
+            if analytical_currents and  analytical_forces:
                 ax.scatter(
                     analytical_forces[r], analytical_currents[r],
-                    label='Analytical', marker='x', c='red',
+                    label='Analytical', marker='x', c='orange',
                     s=marker_size, zorder=4
                 )
                 ax.legend()
 
             ax.set_xlabel("Average Force")
             ax.set_ylabel("Average Current")
-            ax.set_title(f"I–F Curve: Reaction {r + 1}")
+            ax.set_title(f"I-F Curve: Reaction {r + 1}")
             ax.grid(True)
             fig.tight_layout()
+            plt.legend()
+            if r == 0:
+                plt.savefig('I-F_comparison_plot.png', dpi=300, bbox_inches='tight')
             plt.show()
 
     # ==========================================================
@@ -556,7 +613,7 @@ class RunSSA:
 
         # from sympy import Float as SympyFloat
 
-        n_sweeps = len(self.sweep_count_values)
+        n_sweeps = len(self.count_values[0]) # all must be the same length anyway
         n_rxn = self.n_reactions
 
         C = self.module.calculate_reaction_cycle_matrix()
@@ -778,16 +835,29 @@ class RunSSA:
         if analytical_G is None and hasattr(self, 'analytical_G'):
             analytical_G = self.analytical_G
 
-        counts = self.sweep_count_values
-        n_sweeps = len(counts)
+        # counts = self.sweep_count_values
+        n_sweeps = len(self.count_values[0])
 
-        # ?
-        # species_label = (
-        #     self.species_names[self.sweep_species_index]
-        #     if self.sweep_species_index < len(self.species_names)
-        #     else f'Species [{self.sweep_species_index}]'
-        # )
-        # #
+        while True:
+
+            try:
+                user_selected_xaxis = int(input("Enter index of species for colour-grading (int): "))
+                if 0 <= user_selected_xaxis < len(self.count_values):
+                    break
+                else:
+                    print(f"Please enter an index between 0 and {len(self.count_values)-1}.")
+            except ValueError:
+                print("Invalid input. Please enter an integer.")
+
+        x_axis_for_plot = self.count_values[user_selected_xaxis]
+
+        potential_x_axis_label = []
+
+        for index in self.species_index:
+
+            potential_x_axis_label.append(self.species_names[index])
+
+        x_axis_label = potential_x_axis_label[user_selected_xaxis]
 
         # =======================
         # SCALAR CONDUCTANCE
@@ -799,7 +869,7 @@ class RunSSA:
 
             # G coloured by EPR 
             sc = ax.scatter(
-                counts, self.sweep_G_scalar,
+                x_axis_for_plot, self.sweep_G_scalar,
                 c=self.fundamental_EPRs, cmap=cmap,
                 s=marker_size, edgecolors='black', linewidths=0.5,
                 label='$G$ (SSA)', zorder=3
@@ -809,30 +879,30 @@ class RunSSA:
 
             if analytical_G is not None:
                 ax.scatter(
-                    counts, analytical_G,
+                    x_axis_for_plot, analytical_G,
                     marker='x', c='red', s=marker_size,
-                    label='$G$ (Analytical)', zorder=4
+                    label='$G$ (User Data)', zorder=4
                 )
 
             if show_covariance:
                 cov_half = np.array([
                     self.sweep_covariance_matrices[s][0, 0] / 2.0
-                    for s in range(len(counts))
+                    for s in range(n_sweeps)
                 ])
 
                 ax.scatter(
-                    counts, cov_half,
+                    x_axis_for_plot, cov_half,
                     marker='x', color='blue', s=marker_size,
                     label=r'$\mathrm{Cov}(I) / 2$  (SSA)',
                     zorder=3
                 )
 
                 # fitted plot for covariance
-                valid = ~np.isnan(cov_half) & ~np.isnan(counts)
+                valid = ~np.isnan(cov_half) & ~np.isnan(x_axis_for_plot)
                 if np.sum(valid) > fit_order + 1:
-                    coeffs = np.polyfit(counts[valid], cov_half[valid], fit_order)
+                    coeffs = np.polyfit(x_axis_for_plot[valid], cov_half[valid], fit_order)
                     x_fit = np.linspace(
-                        np.min(counts[valid]), np.max(counts[valid]), 200
+                        np.min(x_axis_for_plot[valid]), np.max(x_axis_for_plot[valid]), 200
                     )
                     y_fit = np.polyval(coeffs, x_fit)
                     ax.plot(
@@ -860,7 +930,7 @@ class RunSSA:
                 #     mean_diff, color='purple', linewidth=1, alpha=0.6
                 # )
 
-            ax.set_xlabel(f'Initial count of {self.species_names[self.species_indexes[0]]}')
+            ax.set_xlabel(f'Initial count of {x_axis_label}')
             ax.set_ylabel('$G$')
             ax.set_title(r'$G$ vs varied species, colour graded against fundamental EPR')
             ax.legend()
@@ -887,13 +957,13 @@ class RunSSA:
             # Scatter SSA eigenvalues with color mapped to fundamental_EPRs
             for e in range(n_indep):
                 scatter = ax.scatter(
-                    counts, eigvals[:, e],
+                    x_axis_for_plot, eigvals[:, e],
                     c=self.fundamental_EPRs,
                     cmap=cmap,
                     norm=norm,  # Use the same norm as the colorbar
                     s=marker_size,
                     edgecolors='black', linewidths=0.5,
-                    label=f'$\\lambda_{{{e+1}}}(G)$  (SSA)',
+                    label=f'$\\lambda_{{{e+1}}}(G)$  (Direct Calculation)',
                     zorder=3
                 )
 
@@ -902,16 +972,16 @@ class RunSSA:
                 analytical_G_np = np.array(analytical_G)
                 if analytical_G_np.ndim == 1:
                     ax.scatter(
-                        counts, analytical_G_np,
+                        x_axis_for_plot, analytical_G_np,
                         marker='x', c='red', s=marker_size,
-                        label='$G$ (Analytical)', zorder=4
+                        label='$G$ (Combined Data)', zorder=4
                     )
                 else:
                     for e in range(analytical_G_np.shape[1]):
                         ax.scatter(
-                            counts, analytical_G_np[:, e],
+                            x_axis_for_plot, analytical_G_np[:, e],
                             marker='x', color='red', s=marker_size,
-                            label=f'$\\lambda_{{{e+1}}}(G)$  (Analytical)',
+                            label=f'$\\lambda_{{{e+1}}}(G)$ (Combined Data)',
                             zorder=4
                         )
 
@@ -923,9 +993,9 @@ class RunSSA:
                     cov_spectral_norms[s] = np.linalg.norm(cov_half, 2)
 
                 ax.scatter(
-                    counts, cov_spectral_norms,
+                    x_axis_for_plot, cov_spectral_norms,
                     marker='x', color='blue', s=marker_size * 0.8,
-                    label=r'$\| \mathrm{Cov}(\mathbf{I})/2 \|$',
+                    label=r'$\| \mathrm{Cov}(I^{(3)})/2 \|$',
                     zorder=3
                 )
 
@@ -935,24 +1005,24 @@ class RunSSA:
 
             if show_difference:
 
-                print("No differenec plotted: Option Deprecated.")
+                print("No difference plotted: Option Deprecated.")
 
-                # min_eig_diff = np.zeros(n_sweeps)
+                # n_sweeps = len(self.sweep_covariance_matrices)
+
+                # # Preallocate array for Frobenius norms
+                # frobenius_diff = np.zeros(n_sweeps)
+
                 # for s in range(n_sweeps):
+                #     # SSA covariance matrix / 2
                 #     cov_half = 0.5 * self.sweep_covariance_matrices[s]
+                    
+                #     # Analytical G matrix for this sweep
+                #     G_analytical = np.array(analytical_G[s])
+                    
+                #     # Compute Frobenius norm of the difference
+                #     diff_matrix = cov_half - G_analytical
+                #     frobenius_diff[s] = np.linalg.norm(diff_matrix, 'fro')  # 'fro' = Frobenius norm
 
-                #     G_fund = self.sweep_G_fundamental[s]
-                #     if G_fund is None:
-                #         min_eig_diff[s] = float('nan')
-                #         continue
-
-                #     G_fund_np = np.array(
-                #         G_fund.tolist(), dtype=np.float64
-                #     )
-                #     diff_matrix = cov_half - G_fund_np
-                #     min_eig_diff[s] = np.min(
-                #         np.linalg.eigvalsh(diff_matrix)
-                #     )
 
                 # ax.scatter(
                 #     self.fundamental_forces, min_eig_diff,
@@ -961,14 +1031,17 @@ class RunSSA:
                 #     zorder=2
                 # )
                 # ax.axhline(0, color='grey', linewidth=0.8, linestyle='--', alpha=0.5)
+                
+                
 
-            ax.set_xlabel(f'Initial count of {self.species_names[self.species_indexes[0]]}')
+            ax.set_xlabel(f'Initial count of S, Nb ')#{x_axis_label}')
             ax.set_ylabel('Conductance Eigenvalue')
             ax.set_title('Conductance Matrix Eigenvalues vs Initial Count')
-
+            
             ax.legend()
             ax.grid(True)
             fig.tight_layout()
+            plt.savefig('conductance_evals_comparison.png', dpi=300, bbox_inches='tight')
             plt.show()
         # =======================
 
