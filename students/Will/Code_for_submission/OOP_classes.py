@@ -332,7 +332,7 @@ class ModuleProperties:
 
         return fundamental_resistance_matrix
 
-        
+
 # CombiningModules class and helper functions for serial associaiton of module objects.
 
 def primitive_nullspace(matrix):
@@ -356,21 +356,6 @@ def primitive_nullspace(matrix):
         if first_nonzero < 0:
             vec = -vec
         cols.append(vec)
-    return Matrix.hstack(*cols)
-
-def normalise_selection_matrix(S):
-    """
-    Scale each column so that S.T * S = I
-    while preserving the number of rows.
-    """
-    cols = []
-    for j in range(S.cols):
-        col = S.col(j)
-        norm_sq = (col.T * col)[0, 0]
-        if norm_sq == 0:
-            cols.append(col)
-        else:
-            cols.append(col / sqrt(norm_sq))
     return Matrix.hstack(*cols)
 
 
